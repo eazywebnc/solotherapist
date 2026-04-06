@@ -23,6 +23,11 @@ export const metadata: Metadata = {
     url: "https://solotherapist.eazyweb.nc",
     siteName: "SoloTherapist",
     type: "website",
+    locale: "en_US",
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 
