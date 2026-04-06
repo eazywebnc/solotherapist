@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Heart } from 'lucide-react'
+import { EcosystemFooter } from './ecosystem-footer'
 
 export function Footer() {
   return (
@@ -23,6 +24,7 @@ export function Footer() {
             &copy; {new Date().getFullYear()} EazyWebNC. All rights reserved.
           </p>
         </div>
+        <EcosystemFooter />
       </div>
     </footer>
   )
