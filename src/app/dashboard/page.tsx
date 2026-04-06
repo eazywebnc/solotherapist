@@ -1,0 +1,307 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
+import {
+  Heart,
+  Calendar,
+  Users,
+  Clock,
+  FileText,
+  LogOut,
+  Plus,
+  ChevronRight,
+  Video,
+  CreditCard,
+} from 'lucide-react'
+import Link from 'next/link'
+
+interface Appointment {
+  id: string
+  patient_id: string
+  date: string
+  duration: number
+  type: string
+  status: string
+  notes: string | null
+}
+
+interface Patient {
+  id: string
+  name: string
+  email: string
+  status: string
+}
+
+interface Note {
+  id: string
+  patient_id: string
+  content: string
+  type: string
+  created_at: string
+}
+
+export default function DashboardPage() {
+  const [user, setUser] = useState<{ email: string } | null>(null)
+  const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [patients, setPatients] = useState<Patient[]>([])
+  const [recentNotes, setRecentNotes] = useState<Note[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  useEffect(() => {
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        window.location.href = '/auth/login'
+        return
+      }
+      setUser({ email: user.email || '' })
+
+      // Ensure settings exist
+      const { data: existingSettings } = await supabase
+        .from('st_settings')
+        .select('id')
+        .eq('user_id', user.id)
+        .single()
+      if (!existingSettings) {
+        await supabase.from('st_settings').insert({ user_id: user.id })
+      }
+
+      // Fetch today's appointments
+      const todayStart = new Date()
+      todayStart.setHours(0, 0, 0, 0)
+      const todayEnd = new Date()
+      todayEnd.setHours(23, 59, 59, 999)
+
+      const { data: appts } = await supabase
+        .from('st_appointments')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('date', todayStart.toISOString())
+        .lte('date', todayEnd.toISOString())
+        .order('date', { ascending: true })
+        .limit(10)
+
+      setAppointments(appts || [])
+
+      // Fetch patients
+      const { data: pts } = await supabase
+        .from('st_patients')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      setPatients(pts || [])
+
+      // Fetch recent notes
+      const { data: notes } = await supabase
+        .from('st_notes')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      setRecentNotes(notes || [])
+      setLoading(false)
+    }
+    init()
+  }, [])
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/'
+  }
+
+  const formatTime = (iso: string) => {
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const formatDate = (iso: string) => {
+    return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' })
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'confirmed': return 'text-teal-400 bg-teal-500/10'
+      case 'completed': return 'text-green-400 bg-green-500/10'
+      case 'cancelled': return 'text-red-400 bg-red-500/10'
+      case 'no_show': return 'text-amber-400 bg-amber-500/10'
+      default: return 'text-zinc-400 bg-zinc-500/10'
+    }
+  }
+
+  const upcomingAppointments = appointments.filter(a => a.status !== 'completed' && a.status !== 'cancelled')
+  const todayCount = appointments.length
+  const activePatients = patients.filter(p => p.status === 'active').length
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#030808] flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-[#030808]">
+      {/* Top nav */}
+      <header className="border-b border-white/5 bg-[#030808]/80 backdrop-blur-xl sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center">
+              <Heart className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="text-sm font-bold text-white">SoloTherapist</span>
+          </Link>
+          <div className="flex items-center gap-4">
+            <span className="text-xs text-zinc-500 hidden sm:block">{user?.email}</span>
+            <button onClick={handleLogout} className="p-2 text-zinc-500 hover:text-white transition-colors" title="Sign out">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Practice Dashboard</h1>
+            <p className="text-sm text-zinc-500 mt-0.5">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </p>
+          </div>
+          <button className="px-4 py-2 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 text-white text-sm font-medium flex items-center gap-2 hover:from-teal-600 hover:to-cyan-600 transition-all shadow-lg shadow-teal-500/20">
+            <Plus className="w-4 h-4" /> New appointment
+          </button>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+          {[
+            { icon: Calendar, label: "Today's sessions", value: String(todayCount), color: 'text-teal-400', bg: 'bg-teal-500/10' },
+            { icon: Users, label: 'Active patients', value: String(activePatients || patients.length), color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
+            { icon: Clock, label: 'Upcoming today', value: String(upcomingAppointments.length), color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+            { icon: FileText, label: 'Recent notes', value: String(recentNotes.length), color: 'text-green-400', bg: 'bg-green-500/10' },
+          ].map(({ icon: Icon, label, value, color, bg }) => (
+            <div key={label} className="p-5 rounded-2xl border border-white/5 bg-white/[2%]">
+              <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center mb-3`}>
+                <Icon className={`w-4.5 h-4.5 ${color}`} />
+              </div>
+              <p className="text-2xl font-bold text-white">{value}</p>
+              <p className="text-xs text-zinc-500 mt-1">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Today's appointments */}
+          <div className="lg:col-span-2 rounded-2xl border border-white/5 bg-white/[2%] overflow-hidden">
+            <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-teal-400" />
+                Today&apos;s Appointments
+              </h2>
+              <button className="text-xs text-teal-400 hover:text-teal-300 transition-colors flex items-center gap-1">
+                View all <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+
+            {appointments.length === 0 ? (
+              <div className="px-6 py-14 text-center">
+                <Calendar className="w-10 h-10 text-zinc-700 mx-auto mb-4" />
+                <p className="text-sm text-zinc-500 mb-2">No appointments today</p>
+                <p className="text-xs text-zinc-600">
+                  Book a session or share your booking link with patients.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {appointments.map((appt) => (
+                  <div key={appt.id} className="px-6 py-3.5 flex items-center gap-4 hover:bg-white/[1%] transition-colors">
+                    <div className="w-12 text-center shrink-0">
+                      <p className="text-sm font-semibold text-teal-400">{formatTime(appt.date)}</p>
+                      <p className="text-[10px] text-zinc-600">{appt.duration}m</p>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white truncate font-medium">{appt.type || 'Session'}</p>
+                      {appt.notes && <p className="text-[11px] text-zinc-500 truncate">{appt.notes}</p>}
+                    </div>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium capitalize ${getStatusColor(appt.status)}`}>
+                      {appt.status}
+                    </span>
+                    {appt.type?.toLowerCase().includes('video') && (
+                      <Video className="w-4 h-4 text-cyan-400 shrink-0" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right column */}
+          <div className="space-y-6">
+            {/* Recent notes */}
+            <div className="rounded-2xl border border-white/5 bg-white/[2%] overflow-hidden">
+              <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-emerald-400" />
+                  Recent Notes
+                </h2>
+              </div>
+
+              {recentNotes.length === 0 ? (
+                <div className="px-5 py-8 text-center">
+                  <FileText className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
+                  <p className="text-xs text-zinc-500">No session notes yet</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-white/5">
+                  {recentNotes.map((note) => (
+                    <div key={note.id} className="px-5 py-3 hover:bg-white/[1%] transition-colors">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] text-teal-400 font-medium capitalize">{note.type || 'Session note'}</span>
+                        <span className="text-[10px] text-zinc-600">{formatDate(note.created_at)}</span>
+                      </div>
+                      <p className="text-xs text-zinc-400 line-clamp-2">{note.content}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Quick actions */}
+            <div className="rounded-2xl border border-white/5 bg-white/[2%] p-5">
+              <h2 className="text-sm font-semibold text-white mb-4">Quick Actions</h2>
+              <div className="space-y-2">
+                {[
+                  { icon: Calendar, label: 'Schedule appointment', color: 'text-teal-400 bg-teal-500/10' },
+                  { icon: Users, label: 'Add new patient', color: 'text-cyan-400 bg-cyan-500/10' },
+                  { icon: FileText, label: 'Write session note', color: 'text-emerald-400 bg-emerald-500/10' },
+                  { icon: Video, label: 'Start video session', color: 'text-blue-400 bg-blue-500/10' },
+                  { icon: CreditCard, label: 'Create invoice', color: 'text-green-400 bg-green-500/10' },
+                ].map(({ icon: Icon, label, color }) => (
+                  <button
+                    key={label}
+                    className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[3%] transition-colors text-left group"
+                  >
+                    <div className={`w-7 h-7 rounded-lg ${color} flex items-center justify-center shrink-0`}>
+                      <Icon className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-xs text-zinc-400 group-hover:text-white transition-colors">{label}</span>
+                    <ChevronRight className="w-3 h-3 text-zinc-700 ml-auto group-hover:text-zinc-400 transition-colors" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  )
+}
